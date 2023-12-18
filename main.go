@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go_physics_engine/rendering"
+	"go_physics_engine/simulation"
 	"go_physics_engine/window"
 	"log"
 	"os"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/go-gl/gl/v4.6-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/go-gl/mathgl/mgl32"
 )
 
 func checkGLError(operation string) {
@@ -29,17 +29,11 @@ func LoadShaderFile(filePath string) (string, error) {
 }
 
 func main() {
-	println("Main")
 	win := window.OpenWindow("Acoustic Simulation")
-	println("Window opened")
 	defer glfw.Terminate()
 
 	if err := gl.Init(); err != nil {
 		log.Fatalln(err)
-	}
-
-	if errCode := gl.GetError(); errCode != gl.NO_ERROR {
-		log.Printf("OpenGL error after initialization: %v\n", errCode)
 	}
 
 	rendering.InitCircle()
@@ -53,12 +47,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load fragment shader: %v", err)
 	}
-	println("Shaders loaded")
-	shaderProgram := CreateProgram(vertexShaderSource, fragmentShaderSource)
-	println("Shader program created")
-	startTime := time.Now()
-	waveSpeed := float32(100.0) // Adjust wave speed as needed
 
+	shaderProgram := CreateProgram(vertexShaderSource, fragmentShaderSource)
+
+	//startTime := time.Now()
+	wave := simulation.NewWave(440, 1.0, 200)
+	println("Wave number:", wave.WaveNumber())
+	println("Angular frequency:", wave.AngularFrequency())
+	println("Wavelength:", wave.Wavelength)
+	//waveSpeed := float32(100.0) // Adjust wave speed as needed
+	println("Wave speed:", wave.Speed)
 	for !win.ShouldClose() {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
@@ -67,7 +65,12 @@ func main() {
 		gl.Viewport(0, 0, int32(width), int32(height))
 
 		gl.UseProgram(shaderProgram)
-		rendering.DrawWave(startTime, mgl32.Vec2{0, 0}, waveSpeed)
+
+		currentTime := time.Now().UnixNano() / int64(time.Millisecond) // Current time in milliseconds
+		// Render the wave
+		//rendering.DrawWave(startTime, mgl32.Vec2{0, 0}, waveSpeed)
+		println("Wave drawn", currentTime)
+		rendering.RenderWave(shaderProgram, float64(currentTime))
 
 		win.SwapBuffers()
 		glfw.PollEvents()

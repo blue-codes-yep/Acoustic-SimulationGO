@@ -69,3 +69,60 @@ func DrawWave(startTime time.Time, waveCenter mgl32.Vec2, waveSpeed float32) {
 	gl.DrawArrays(gl.LINE_LOOP, 0, numCirclePoints)
 	checkGLError("DrawArrays in drawWave")
 }
+
+func RenderWave(shaderProgram uint32, currentTime float64) {
+	maxX, maxY, maxZ := 10.0, 20.0, 40.0
+	dx, dz := 1.0, 1.0 // Increments for quads
+	amplitude := 1.0
+	frequency := 150.0
+	wavelength := 1.0
+
+	gl.UseProgram(shaderProgram)
+
+	for x := 0.0; x < maxX-dx; x += dx {
+		for z := 0.0; z < maxZ-dz; z += dz {
+			// Calculate base Y position and neighboring offsets
+			y := float32(amplitude * math.Sin(2.0*math.Pi*frequency*(x+currentTime)/wavelength))
+			y2 := float32(amplitude * math.Sin(2.0*math.Pi*frequency*(x+dx+currentTime)/wavelength))
+			y3 := float32(amplitude * math.Sin(2.0*math.Pi*frequency*(x+dx+dz+currentTime)/wavelength))
+			y4 := float32(amplitude * math.Sin(2.0*math.Pi*frequency*(x+dz+currentTime)/wavelength))
+
+			// Clamp Y values to limits
+			clampY(y, float32(maxY))
+			clampY(y2, float32(maxY))
+			clampY(y3, float32(maxY))
+			clampY(y4, float32(maxY))
+
+			// Create four vertices for the quad
+			vertices := []float32{
+				float32(x), y, float32(z),
+				float32(x + dx), y2, float32(z),
+				float32(x + dx), y3, float32(z + dz),
+				float32(x), y4, float32(z + dz),
+			}
+
+			// Bind and write vertex data
+			gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(vertices)*4, gl.Ptr(vertices))
+
+			// Draw the triangle formed by the first three vertices
+			gl.DrawArrays(gl.TRIANGLES, 0, 3)
+
+			// Draw the triangle formed by the last three vertices (connects back to the beginning)
+			gl.DrawArrays(gl.TRIANGLES, 3, 3)
+		}
+	}
+
+	checkGLError("RenderWave")
+}
+
+func clampY(y float32, maxY float32) {
+	if y < 0.0 {
+		y = 0.0
+	}
+}
+
+func vertexColor(y float32, maxY float32) []float32 {
+	// Normalize Y position to range between 0 and 1
+	normalizedY := y / maxY
+	return []float32{0.0, 0.0, normalizedY, 1.0} // Blue to white gradient
+}
