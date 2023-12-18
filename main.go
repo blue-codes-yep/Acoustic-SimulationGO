@@ -2,99 +2,74 @@ package main
 
 import (
 	"fmt"
+	"go_physics_engine/rendering"
+	"go_physics_engine/window"
 	"log"
-	"math"
 	"os"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
-const (
-	windowWidth  = 1600
-	windowHeight = 900
-)
-
-const (
-	numCirclePoints = 75 // Number of points to represent the circle
-)
-
-var (
-	circleVAO uint32
-	circleVBO uint32
-)
-
-func loadShaderFile(filePath string) (string, error) {
-	bytes, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-
 func checkGLError(operation string) {
 	if errCode := gl.GetError(); errCode != gl.NO_ERROR {
 		log.Printf("OpenGL error after %s: %v\n", operation, errCode)
 	}
 }
+func LoadShaderFile(filePath string) (string, error) {
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Printf("Failed to read shader file %s: %v\n", filePath, err)
+		return "", err
+	}
+	return string(fileData), nil
+}
 
 func main() {
-	window := openWindow("Acoustic Simulation")
+	println("Main")
+	win := window.OpenWindow("Acoustic Simulation")
+	println("Window opened")
 	defer glfw.Terminate()
 
 	if err := gl.Init(); err != nil {
 		log.Fatalln(err)
 	}
-	checkGLError("initializing OpenGL")
-	/* Provide debug*/
-	gl.DebugMessageCallback(func(
-		source uint32,
-		gltype uint32,
-		id uint32,
-		severity uint32,
-		length int32,
-		message string,
-		userParam unsafe.Pointer,
-	) {
-		log.Println(message)
-	}, nil)
-	gl.Enable(gl.DEBUG_OUTPUT)
 
-	initCircle()
+	if errCode := gl.GetError(); errCode != gl.NO_ERROR {
+		log.Printf("OpenGL error after initialization: %v\n", errCode)
+	}
+
+	rendering.InitCircle()
+
 	// Load shaders
-	vertexShaderSource, err := loadShaderFile("shaders/vertexShader.glsl")
+	vertexShaderSource, err := LoadShaderFile("shader/vertexShader.glsl")
 	if err != nil {
 		log.Fatalf("failed to load vertex shader: %v", err)
 	}
-	fragmentShaderSource, err := loadShaderFile("shaders/fragmentShader.glsl")
+	fragmentShaderSource, err := LoadShaderFile("shader/fragmentShader.glsl")
 	if err != nil {
 		log.Fatalf("failed to load fragment shader: %v", err)
 	}
-
-	// Compile and link shaders
-	shaderProgram := createProgram(vertexShaderSource, fragmentShaderSource)
-
+	println("Shaders loaded")
+	shaderProgram := CreateProgram(vertexShaderSource, fragmentShaderSource)
+	println("Shader program created")
 	startTime := time.Now()
 	waveSpeed := float32(100.0) // Adjust wave speed as needed
 
-	for !window.ShouldClose() {
+	for !win.ShouldClose() {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-		gl.Viewport(0, 0, windowWidth, windowHeight)
+
+		// Get the current size of the window
+		width, height := win.GetSize()
+		gl.Viewport(0, 0, int32(width), int32(height))
 
 		gl.UseProgram(shaderProgram)
-		log.Println("Using shader program")
-		drawWave(startTime, mgl32.Vec2{0, 0}, waveSpeed)
-		checkGLError("after drawing wave")
-		// Debugging: Check for OpenGL errors
-		if err := gl.GetError(); err != 0 {
-			log.Printf("OpenGL error: %v\n", err)
-		}
+		rendering.DrawWave(startTime, mgl32.Vec2{0, 0}, waveSpeed)
 
-		window.SwapBuffers()
+		win.SwapBuffers()
 		glfw.PollEvents()
 	}
 
@@ -102,67 +77,7 @@ func main() {
 	gl.DeleteProgram(shaderProgram)
 }
 
-func openWindow(title string) *glfw.Window {
-	if err := glfw.Init(); err != nil {
-		panic(err)
-	}
-
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 3)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-	glfw.WindowHint(glfw.Resizable, glfw.False)
-
-	window, err := glfw.CreateWindow(windowWidth, windowHeight, title, nil, nil)
-	if err != nil {
-		panic(err)
-	}
-	window.MakeContextCurrent()
-
-	return window
-}
-
-func initCircle() {
-	gl.GenVertexArrays(1, &circleVAO)
-	gl.GenBuffers(1, &circleVBO)
-	gl.BindVertexArray(circleVAO)
-	gl.BindBuffer(gl.ARRAY_BUFFER, circleVBO)
-
-	var vertices [numCirclePoints * 3]float32 // 3 coordinates per point
-
-	gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices[:]), gl.DYNAMIC_DRAW)
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 0, nil)
-}
-
-func drawWave(startTime time.Time, waveCenter mgl32.Vec2, waveSpeed float32) {
-	elapsed := float32(time.Since(startTime).Seconds())
-	waveRadius := elapsed * waveSpeed
-
-	var vertices [numCirclePoints * 3]float32
-	for i := 0; i < numCirclePoints; i++ {
-		angle := 2 * math.Pi * float64(i) / float64(numCirclePoints)
-		x := waveCenter.X() + waveRadius*float32(math.Cos(angle))
-		y := waveCenter.Y() + waveRadius*float32(math.Sin(angle))
-
-		ndcX := (x/windowWidth)*2 - 1
-		ndcY := (y/windowHeight)*2 - 1
-
-		vertices[i*3] = ndcX
-		vertices[i*3+1] = ndcY
-		vertices[i*3+2] = 0
-	}
-
-	gl.BindBuffer(gl.ARRAY_BUFFER, circleVBO)
-	gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(vertices)*4, gl.Ptr(vertices[:]))
-	checkGLError("BufferSubData in drawWave")
-
-	gl.BindVertexArray(circleVAO)
-	gl.DrawArrays(gl.LINE_LOOP, 0, numCirclePoints)
-	checkGLError("DrawArrays in drawWave")
-}
-
-func compileShader(source string, shaderType uint32) (uint32, error) {
+func CompileShader(source string, shaderType uint32) (uint32, error) {
 	shader := gl.CreateShader(shaderType)
 
 	// Convert the Go string into a null-terminated C string
@@ -194,12 +109,12 @@ func compileShader(source string, shaderType uint32) (uint32, error) {
 	return shader, nil
 }
 
-func createProgram(vertexShaderSource, fragmentShaderSource string) uint32 {
-	vertexShader, err := compileShader(vertexShaderSource, gl.VERTEX_SHADER)
+func CreateProgram(vertexShaderSource, fragmentShaderSource string) uint32 {
+	vertexShader, err := CompileShader(vertexShaderSource, gl.VERTEX_SHADER)
 	if err != nil {
 		panic(err)
 	}
-	fragmentShader, err := compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER)
+	fragmentShader, err := CompileShader(fragmentShaderSource, gl.FRAGMENT_SHADER)
 	if err != nil {
 		panic(err)
 	}
